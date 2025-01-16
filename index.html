@@ -3,42 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ana Sayfa</title>
+    <title>Barış | Matrix Portfolio</title>
     <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+    <div class="noise-overlay"></div>
+    <div class="matrix-bg"></div>
+    <div class="scanline"></div>
+
     <header>
-        <h1>Barış</h1>
-        <p>Web Developer | Designer | Programmer</p>
+        <div class="glitch-container">
+            <h1 class="glitch" data-text="BARIŞ">BARIŞ</h1>
+        </div>
+        <div class="typing-container">
+            <span class="typing-text"></span>
+            <span class="cursor">_</span>
+        </div>
     </header>
+
     <nav>
         <ul>
-            <li><a href="#home">Home</a></li>
-            <li><a href="#about">About</a></li>
-            <li><a href="#projects">Projects</a></li>
-            <li><a href="#contact">Contact</a></li>
+            <li><a href="#anasayfa" class="neo-btn">
+                <i class="fas fa-home"></i> Ana Sayfa
+                <span></span><span></span><span></span><span></span>
+            </a></li>
+            <li><a href="#hakkimda" class="neo-btn">
+                <i class="fas fa-user"></i> Hakkımda
+                <span></span><span></span><span></span><span></span>
+            </a></li>
+            <li><a href="#projeler" class="neo-btn">
+                <i class="fas fa-code"></i> Projeler
+                <span></span><span></span><span></span><span></span>
+            </a></li>
+            <li><a href="#iletisim" class="neo-btn">
+                <i class="fas fa-envelope"></i> İletişim
+                <span></span><span></span><span></span><span></span>
+            </a></li>
         </ul>
     </nav>
+
     <main>
-        <section id="home">
-            <h2>Welcome to My Website</h2>
-            <p>This is a simple and elegant homepage.</p>
+        <section id="anasayfa" class="matrix-card">
+            <div class="card-header">
+                <div class="terminal-bar">
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                </div>
+                <h2>Hoş Geldiniz</h2>
+            </div>
+            <div class="card-content">
+                <p>Portfolyo sitemde sizleri ağırlamaktan mutluluk duyuyorum.</p>
+            </div>
         </section>
-        <section id="about">
-            <h2>About Me</h2>
-            <p>Information about Barış.</p>
+
+        <section id="hakkimda" class="matrix-card">
+            <div class="card-header">
+                <div class="terminal-bar">
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                </div>
+                <h2>Hakkımda</h2>
+            </div>
+            <div class="card-content">
+                <p>Web geliştirme ve tasarım konularında tutkulu bir yazılımcıyım.</p>
+            </div>
         </section>
-        <section id="projects">
-            <h2>Projects</h2>
-            <p>Details of projects.</p>
+
+        <section id="projeler" class="matrix-card">
+            <div class="card-header">
+                <div class="terminal-bar">
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                </div>
+                <h2>Projelerim</h2>
+            </div>
+            <div class="card-content">
+                <p>Yakında eklenecek...</p>
+            </div>
         </section>
-        <section id="contact">
-            <h2>Contact</h2>
-            <p>Contact information.</p>
+
+        <section id="iletisim" class="matrix-card">
+            <div class="card-header">
+                <div class="terminal-bar">
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                    <span class="terminal-btn"></span>
+                </div>
+                <h2>İletişim</h2>
+            </div>
+            <div class="card-content">
+                <p>E-posta: ornek@email.com</p>
+            </div>
         </section>
     </main>
+
     <footer>
-        <p>&copy; 2023 Barış</p>
+        <p>&copy; 2024 Barış - <span class="matrix-text">Matrix Edition</span></p>
     </footer>
+
+    <script src="script.js"></script>
 </body>
 </html>
