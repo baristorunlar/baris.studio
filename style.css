@@ -558,4 +558,90 @@ button:hover {
 /* Bildirim gösterildiğinde çarpı butonunun konumu */
 .notification.show ~ #notesSection .logout-btn {
     top: 80px;
+}
+
+/* Login button styles */
+#loginSection button {
+    position: relative;
+    background: linear-gradient(45deg, #1a1a1a, #333333);
+    border: 1px solid var(--border);
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    width: 100%;
+    margin-top: 16px;
+}
+
+#loginSection button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: linear-gradient(45deg, #262626, #404040);
+}
+
+/* Loading state */
+#loginSection button.loading {
+    pointer-events: none;
+    opacity: 0.8;
+    padding-right: 48px;
+    background: linear-gradient(45deg, #262626, #404040);
+}
+
+#loginSection button.loading::after {
+    content: '';
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: translateY(-50%) rotate(360deg);
+    }
+}
+
+/* Loading dots animation */
+@keyframes dots {
+    0%, 20% { content: ''; }
+    40% { content: '.'; }
+    60% { content: '..'; }
+    80%, 100% { content: '...'; }
+}
+
+#loginSection button.loading::before {
+    content: '';
+    position: absolute;
+    right: 40px;
+    animation: dots 1.5s infinite;
+}
+
+#password {
+    -webkit-text-security: disc;
+    -moz-text-security: disc;
+    text-security: disc;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+}
+
+/* Chrome, Safari, Edge için sayı oklarını kaldır */
+#password::-webkit-outer-spin-button,
+#password::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Firefox için sayı oklarını kaldır */
+#password[type=number] {
+    -moz-appearance: textfield;
 } 

@@ -11,6 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <!-- Firebase config dosyası -->
     <script src="firebase-config.js"></script>
 </head>
@@ -21,7 +22,15 @@
         
         <div id="loginSection">
             <h2>Giriş</h2>
-            <input type="password" id="password" placeholder="Şifrenizi girin">
+            <input 
+                type="number" 
+                inputmode="numeric" 
+                pattern="[0-9]*" 
+                id="password" 
+                placeholder="Şifrenizi girin"
+                maxlength="4"
+                autocomplete="off"
+            >
             <button onclick="login()">Giriş Yap</button>
         </div>
 

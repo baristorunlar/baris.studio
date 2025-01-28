@@ -60,6 +60,7 @@ let isAuthenticated = false;
 
 // Login fonksiyonu
 async function login() {
+    const loginButton = document.querySelector('#loginSection button');
     const password = document.getElementById('password').value;
     
     if(password.trim() === '') {
@@ -68,14 +69,17 @@ async function login() {
     }
     
     try {
+        // Loading başlat
+        loginButton.classList.add('loading');
+        loginButton.textContent = 'Giriş Yapılıyor';
+        loginButton.disabled = true;
+        
         // Özel token oluştur
         const token = await firebase.auth().signInAnonymously();
         await firebase.auth().currentUser.updateProfile({
             displayName: 'baris-notes'
         });
         
-        // Custom claim ekle
-        const tokenResult = await firebase.auth().currentUser.getIdTokenResult(true);
         if (password === '5544') {
             isAuthenticated = true;
             currentPassword = password;
@@ -96,6 +100,11 @@ async function login() {
     } catch(e) {
         console.error('Giriş hatası:', e);
         showNotification('Giriş yapılırken bir hata oluştu!', 'error');
+    } finally {
+        // Loading bitir
+        loginButton.classList.remove('loading');
+        loginButton.textContent = 'Giriş Yap';
+        loginButton.disabled = false;
     }
 }
 
@@ -130,8 +139,11 @@ async function saveNote() {
             }))
         };
 
+        console.log('Not kaydediliyor:', noteData);
+
         // Firebase'e kaydet
-        await db.collection('notes').add(noteData);
+        const docRef = await db.collection('notes').add(noteData);
+        console.log('Not başarıyla kaydedildi, ID:', docRef.id);
         
         // Form temizleme
         noteInput.value = '';
@@ -191,12 +203,16 @@ async function loadNotes() {
     notesList.innerHTML = '';
     
     try {
+        console.log('Notlar yükleniyor...');
         const snapshot = await db.collection('notes').orderBy('date', 'desc').get();
-        const notes = [];
+        console.log('Yüklenen not sayısı:', snapshot.size);
         
+        const notes = [];
         snapshot.forEach(doc => {
             notes.push({ id: doc.id, ...doc.data() });
         });
+        
+        console.log('İşlenmiş notlar:', notes);
         
         notes.forEach((note) => {
             if (filterCategory !== 'hepsi' && note.category !== filterCategory) {
