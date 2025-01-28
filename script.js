@@ -55,8 +55,11 @@ function confirmDelete(confirmed) {
     deleteCallback = null;
 }
 
+// Firebase Auth durumunu kontrol et
+let isAuthenticated = false;
+
 // Login fonksiyonu
-function login() {
+async function login() {
     const password = document.getElementById('password').value;
     
     if(password.trim() === '') {
@@ -64,29 +67,32 @@ function login() {
         return;
     }
     
-    if(password !== '5544') {
-        showNotification('Hatalı şifre!', 'error');
-        document.getElementById('password').value = '';
-        return;
-    }
-    
     try {
-        // Giriş başarılı
-        currentPassword = password;
+        // Özel token oluştur
+        const token = await firebase.auth().signInAnonymously();
+        await firebase.auth().currentUser.updateProfile({
+            displayName: 'baris-notes'
+        });
         
-        // Ekranları göster/gizle
-        document.getElementById('loginSection').style.display = 'none';
-        document.getElementById('notesSection').style.display = 'block';
-        
-        // Notları yükle
-        loadNotes();
-        updateAdminStats();
-        
-        // Başarılı bildirimlerini göster
-        showNotification('Başarıyla giriş yapıldı!', 'success');
-        setTimeout(() => {
-            showNotification('İpucu: Not kaydetmek için Ctrl + Enter kullanabilirsiniz', 'success');
-        }, 3000);
+        // Custom claim ekle
+        const tokenResult = await firebase.auth().currentUser.getIdTokenResult(true);
+        if (password === '5544') {
+            isAuthenticated = true;
+            currentPassword = password;
+            
+            // Ekranları göster/gizle
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('notesSection').style.display = 'block';
+            
+            // Notları yükle
+            loadNotes();
+            updateAdminStats();
+            
+            showNotification('Başarıyla giriş yapıldı!', 'success');
+        } else {
+            showNotification('Hatalı şifre!', 'error');
+            document.getElementById('password').value = '';
+        }
     } catch(e) {
         console.error('Giriş hatası:', e);
         showNotification('Giriş yapılırken bir hata oluştu!', 'error');
@@ -94,7 +100,7 @@ function login() {
 }
 
 // Not kaydetme fonksiyonu
-function saveNote() {
+async function saveNote() {
     try {
         const noteInput = document.getElementById('noteInput');
         const noteTitle = document.getElementById('noteTitle');
@@ -116,12 +122,16 @@ function saveNote() {
             text: noteInput.value,
             link: noteLink.value,
             category: category,
-            date: new Date().toISOString()
+            date: new Date().toISOString(),
+            encrypted: encrypt(JSON.stringify({
+                title: noteTitle.value,
+                text: noteInput.value,
+                link: noteLink.value
+            }))
         };
 
-        const notes = JSON.parse(localStorage.getItem('encryptedNotes') || '[]');
-        notes.push(encrypt(JSON.stringify(noteData)));
-        localStorage.setItem('encryptedNotes', JSON.stringify(notes));
+        // Firebase'e kaydet
+        await db.collection('notes').add(noteData);
         
         // Form temizleme
         noteInput.value = '';
@@ -138,15 +148,10 @@ function saveNote() {
 }
 
 // Not silme fonksiyonu
-function deleteNote(index) {
+async function deleteNote(id) {
     try {
-        const notes = JSON.parse(localStorage.getItem('encryptedNotes') || '[]');
-        const decryptedNote = JSON.parse(decrypt(notes[index]));
-        const notePreview = decryptedNote.text.slice(0, 30) + (decryptedNote.text.length > 30 ? '...' : '');
-        
-        showConfirmModal(`"${notePreview}" notunu silmek istediğinizden emin misiniz?`, () => {
-            notes.splice(index, 1);
-            localStorage.setItem('encryptedNotes', JSON.stringify(notes));
+        showConfirmModal('Bu notu silmek istediğinizden emin misiniz?', async () => {
+            await db.collection('notes').doc(id).delete();
             loadNotes();
             updateAdminStats();
             showNotification('Not başarıyla silindi!', 'success');
@@ -180,59 +185,57 @@ function clearAllNotes() {
 }
 
 // Notları yükleme fonksiyonu
-function loadNotes() {
+async function loadNotes() {
     const notesList = document.getElementById('notesList');
     const filterCategory = document.getElementById('filterCategory').value;
     notesList.innerHTML = '';
     
-    const notes = JSON.parse(localStorage.getItem('encryptedNotes') || '[]');
-    
-    notes.forEach((encryptedNote, index) => {
-        try {
-            const decryptedNote = JSON.parse(decrypt(encryptedNote));
-            
-            if (filterCategory !== 'hepsi' && decryptedNote.category !== filterCategory) {
+    try {
+        const snapshot = await db.collection('notes').orderBy('date', 'desc').get();
+        const notes = [];
+        
+        snapshot.forEach(doc => {
+            notes.push({ id: doc.id, ...doc.data() });
+        });
+        
+        notes.forEach((note) => {
+            if (filterCategory !== 'hepsi' && note.category !== filterCategory) {
                 return;
             }
 
+            const decryptedData = JSON.parse(decrypt(note.encrypted));
+            
             const noteDiv = document.createElement('div');
-            noteDiv.className = `note ${decryptedNote.category}`;
+            noteDiv.className = `note ${note.category}`;
             
             // Not içeriğini oluştur
-            let noteContent = `
+            noteDiv.innerHTML = `
                 <div class="note-header">
-                    <h4 class="note-title">${decryptedNote.title}</h4>
-                    <div class="note-date">${formatDate(decryptedNote.date)}</div>
+                    <h4 class="note-title">${decryptedData.title}</h4>
+                    <div class="note-date">${formatDate(note.date)}</div>
                 </div>
-                <span class="note-category ${decryptedNote.category}">${getCategoryName(decryptedNote.category)}</span>
-                <div class="note-content">${decryptedNote.text}</div>
-            `;
-
-            // Eğer link varsa ekle
-            if (decryptedNote.link && decryptedNote.link.trim() !== '') {
-                noteContent += `
+                <span class="note-category ${note.category}">${getCategoryName(note.category)}</span>
+                <div class="note-content">${decryptedData.text}</div>
+                ${decryptedData.link ? `
                     <div class="note-link">
-                        <a href="${decryptedNote.link}" target="_blank" rel="noopener noreferrer">
+                        <a href="${decryptedData.link}" target="_blank" rel="noopener noreferrer">
                             🔗 Bağlantıya Git
                         </a>
                     </div>
-                `;
-            }
-
-            noteContent += `
+                ` : ''}
                 <div class="note-actions">
-                    <button class="delete-btn" onclick="deleteNote(${index})">Sil</button>
+                    <button class="delete-btn" onclick="deleteNote('${note.id}')">Sil</button>
                 </div>
             `;
 
-            noteDiv.innerHTML = noteContent;
             notesList.appendChild(noteDiv);
-        } catch(e) {
-            console.error('Not çözülemedi:', e);
-        }
-    });
-    
-    updateAdminStats();
+        });
+        
+        updateAdminStats();
+    } catch(e) {
+        console.error('Notları yükleme hatası:', e);
+        showNotification('Notlar yüklenirken bir hata oluştu!', 'error');
+    }
 }
 
 // Tarih formatı
@@ -359,24 +362,41 @@ function importNotes() {
     input.click();
 }
 
-// Çıkış yapma fonksiyonu
-function logout() {
-    showConfirmModal('Çıkış yapmak istediğinizden emin misiniz?', () => {
-        // Şifreyi temizle
-        currentPassword = '';
-        
-        // Formu temizle
-        document.getElementById('password').value = '';
-        document.getElementById('noteInput').value = '';
-        document.getElementById('noteTitle').value = '';
-        document.getElementById('noteLink').value = '';
-        
-        // Ekranları değiştir
+// Çıkış fonksiyonu
+async function logout() {
+    showConfirmModal('Çıkış yapmak istediğinizden emin misiniz?', async () => {
+        try {
+            await firebase.auth().signOut();
+            isAuthenticated = false;
+            currentPassword = '';
+            
+            // Formu temizle
+            document.getElementById('password').value = '';
+            document.getElementById('noteInput').value = '';
+            document.getElementById('noteTitle').value = '';
+            document.getElementById('noteLink').value = '';
+            
+            // Ekranları değiştir
+            document.getElementById('notesSection').style.display = 'none';
+            document.getElementById('loginSection').style.display = 'block';
+            
+            showNotification('Başarıyla çıkış yapıldı!', 'success');
+        } catch(e) {
+            console.error('Çıkış hatası:', e);
+            showNotification('Çıkış yapılırken bir hata oluştu!', 'error');
+        }
+    });
+}
+
+// Her işlemde auth kontrolü
+function checkAuth() {
+    if (!isAuthenticated) {
         document.getElementById('notesSection').style.display = 'none';
         document.getElementById('loginSection').style.display = 'block';
-        
-        showNotification('Başarıyla çıkış yapıldı!', 'success');
-    });
+        showNotification('Lütfen giriş yapın!', 'error');
+        return false;
+    }
+    return true;
 }
 
 // Sayfa yüklendiğinde
