@@ -45,12 +45,12 @@
                             <span class="stat-label">Toplam Not</span>
                         </div>
                         <div class="stat-box">
-                            <span class="stat-value" id="totalChars">0</span>
-                            <span class="stat-label">Toplam Karakter</span>
+                            <span class="stat-value" id="lastNoteDate">-</span>
+                            <span class="stat-label">Son Not Tarihi</span>
                         </div>
                         <div class="stat-box">
-                            <span class="stat-value" id="categoryCount">0</span>
-                            <span class="stat-label">Kategoriler</span>
+                            <span class="stat-value" id="dbSize">0 KB</span>
+                            <span class="stat-label">Veritabanı Boyutu</span>
                         </div>
                     </div>
                 </div>
@@ -67,19 +67,6 @@
                 </div>
             </div>
             
-            <div class="note-input-section">
-                <input type="text" id="noteTitle" placeholder="Not başlığı...">
-                <input type="text" id="noteLink" placeholder="Bağlantı (opsiyonel)...">
-                <select id="noteCategory">
-                    <option value="genel">Genel</option>
-                    <option value="kisisel">Kişisel</option>
-                    <option value="is">İş</option>
-                    <option value="onemli">Önemli</option>
-                </select>
-                <textarea id="noteInput" placeholder="Notunuzu buraya yazın..."></textarea>
-                <button onclick="saveNote()" class="primary-btn">Notu Kaydet</button>
-            </div>
-            
             <div id="savedNotes">
                 <div class="notes-header">
                     <h3>Kaydedilen Notlar</h3>
@@ -90,6 +77,10 @@
                         <option value="is">İş</option>
                         <option value="onemli">Önemli</option>
                     </select>
+                    <button onclick="showAddNoteModal()" class="add-note-btn">
+                        <span class="btn-icon">+</span>
+                        <span class="btn-text">Yeni Not</span>
+                    </button>
                 </div>
                 <div id="notesList"></div>
             </div>
@@ -101,6 +92,30 @@
                 <div class="modal-buttons">
                     <button onclick="confirmDelete(true)" class="confirm-btn">Evet</button>
                     <button onclick="confirmDelete(false)" class="cancel-btn">Hayır</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="addNoteModal" class="modal">
+            <div class="modal-content note-modal">
+                <div class="modal-header">
+                    <h3>Yeni Not Ekle</h3>
+                    <span class="close-modal" onclick="closeAddNoteModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="modalNoteTitle" placeholder="Not başlığı..." class="modal-input">
+                    <input type="text" id="modalNoteLink" placeholder="Bağlantı (opsiyonel)..." class="modal-input">
+                    <select id="modalNoteCategory" class="modal-input">
+                        <option value="genel">Genel</option>
+                        <option value="kisisel">Kişisel</option>
+                        <option value="is">İş</option>
+                        <option value="onemli">Önemli</option>
+                    </select>
+                    <textarea id="modalNoteInput" placeholder="Notunuzu buraya yazın..." class="modal-textarea"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button onclick="closeAddNoteModal()" class="cancel-btn">İptal</button>
+                    <button onclick="saveNoteFromModal()" class="primary-btn">Kaydet</button>
                 </div>
             </div>
         </div>

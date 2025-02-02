@@ -41,18 +41,25 @@ let deleteCallback = null;
 
 // Onay modalını göster
 function showConfirmModal(message, callback) {
-    document.getElementById('confirmMessage').textContent = message;
-    document.getElementById('confirmModal').style.display = 'block';
-    deleteCallback = callback;
+    const modal = document.getElementById('confirmModal');
+    const messageElement = document.getElementById('confirmMessage');
+    messageElement.textContent = message;
+    modal.style.display = 'block';
+
+    // Global callback'i ayarla
+    window.confirmCallback = async (confirmed) => {
+        modal.style.display = 'none';
+        if (confirmed) {
+            await callback();
+        }
+    };
 }
 
 // Onay sonucunu işle
-function confirmDelete(confirmed) {
-    document.getElementById('confirmModal').style.display = 'none';
-    if (confirmed && deleteCallback) {
-        deleteCallback();
+async function confirmDelete(confirmed) {
+    if (window.confirmCallback) {
+        await window.confirmCallback(confirmed);
     }
-    deleteCallback = null;
 }
 
 // Firebase Auth durumunu kontrol et
@@ -93,6 +100,9 @@ async function login() {
             // Notları yükle
             loadNotes();
             updateAdminStats();
+            
+            // Başarılı girişte son giriş zamanını kaydet
+            localStorage.setItem('lastLoginTime', new Date().toISOString());
             
             showNotification('Başarıyla giriş yapıldı!', 'success');
         } else {
@@ -269,20 +279,29 @@ async function loadNotes() {
                 
                 noteDiv.innerHTML = `
                     <div class="note-header">
-                        <h4 class="note-title">${title}</h4>
+                        <div class="note-header-left">
+                            <h4 class="note-title">${title}</h4>
+                            <span class="note-category ${note.category}">${getCategoryName(note.category)}</span>
+                        </div>
                         <div class="note-date">${formatDate(note.date)}</div>
                     </div>
-                    <span class="note-category ${note.category}">${getCategoryName(note.category)}</span>
                     <div class="note-content">${text}</div>
                     ${decryptedData.link ? `
                         <div class="note-link">
                             <a href="${decryptedData.link}" target="_blank" rel="noopener noreferrer">
-                                🔗 Bağlantıya Git
+                                <span>🔗</span>
+                                <span>Bağlantıya Git</span>
                             </a>
                         </div>
                     ` : ''}
                     <div class="note-actions">
-                        <button class="delete-btn" onclick="deleteNote('${doc.id}')">Sil</button>
+                        <button class="edit-btn" onclick="editNote('${doc.id}')">
+                            <span>✏️</span>
+                            <span>Düzenle</span>
+                        </button>
+                        <button class="delete-btn" onclick="deleteNote('${doc.id}')">
+                            <span>🗑️</span>
+                        </button>
                     </div>
                 `;
 
@@ -334,78 +353,108 @@ function getCategoryName(category) {
 // İstatistikleri güncelleme
 async function updateAdminStats() {
     try {
-        // Firestore'dan tüm notları al
         const snapshot = await db.collection('notes').get();
         const notes = [];
-        let totalChars = 0;
-        const categories = new Set();
+        let totalSize = 0;
+        let lastNoteDate = null;
 
         // Her notu işle
         snapshot.forEach(doc => {
             const note = doc.data();
             notes.push(note);
             
-            try {
-                const decryptedData = JSON.parse(decrypt(note.encrypted));
-                totalChars += decryptedData.text.length;
-                if (decryptedData.title) {
-                    totalChars += decryptedData.title.length;
-                }
-                categories.add(note.category);
-            } catch(e) {
-                console.error('Not çözme hatası:', e);
+            // Not boyutunu hesapla (yaklaşık)
+            const noteSize = JSON.stringify(note).length;
+            totalSize += noteSize;
+
+            // Son not tarihini güncelle
+            const noteDate = new Date(note.date);
+            if (!lastNoteDate || noteDate > lastNoteDate) {
+                lastNoteDate = noteDate;
             }
         });
 
         // İstatistikleri güncelle
         document.getElementById('totalNotes').textContent = notes.length;
-        document.getElementById('totalChars').textContent = totalChars.toLocaleString('tr-TR');
-        document.getElementById('categoryCount').textContent = categories.size;
+        document.getElementById('lastNoteDate').textContent = lastNoteDate ? 
+            formatDate(lastNoteDate).split(',')[0] : '-';
+        
+        // Veritabanı boyutunu formatla
+        const sizeInKB = (totalSize / 1024).toFixed(1);
+        const sizeInMB = (totalSize / (1024 * 1024)).toFixed(1);
+        document.getElementById('dbSize').textContent = 
+            totalSize > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+
     } catch(e) {
         console.error('İstatistik güncelleme hatası:', e);
     }
 }
 
 // Notları dışa aktarma
-function exportNotes() {
-    const notes = JSON.parse(localStorage.getItem('encryptedNotes') || '[]');
-    if (notes.length === 0) {
-        showNotification('Dışa aktarılacak not bulunamadı!', 'error');
-        return;
-    }
-    
-    const exportData = notes.map(note => {
-        try {
-            return JSON.parse(decrypt(note));
-        } catch(e) {
-            return null;
+async function exportNotes() {
+    try {
+        // Firestore'dan tüm notları al
+        const snapshot = await db.collection('notes').get();
+        
+        if (snapshot.empty) {
+            showNotification('Dışa aktarılacak not bulunamadı!', 'error');
+            return;
         }
-    }).filter(note => note !== null);
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `notlar-${new Date().toLocaleDateString('tr-TR')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showNotification('Notlar başarıyla dışa aktarıldı!', 'success');
+
+        // Notları dışa aktarılacak formata dönüştür
+        const exportData = snapshot.docs.map(doc => {
+            const note = doc.data();
+            try {
+                // Şifrelenmiş veriyi çöz
+                const decryptedData = JSON.parse(decrypt(note.encrypted));
+                return {
+                    id: doc.id,
+                    title: decodeURIComponent(decryptedData.title || ''),
+                    text: decodeURIComponent(decryptedData.text || ''),
+                    link: decryptedData.link || '',
+                    category: note.category,
+                    date: note.date
+                };
+            } catch(e) {
+                console.error('Not çözme hatası:', e);
+                return null;
+            }
+        }).filter(note => note !== null);
+
+        // Başarılı not sayısını al
+        const successCount = exportData.length;
+
+        // JSON dosyası oluştur
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        
+        // Dosyayı indir
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `notlar-${new Date().toLocaleDateString('tr-TR')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showNotification(`${successCount} not başarıyla dışa aktarıldı!`, 'success');
+    } catch(e) {
+        console.error('Dışa aktarma hatası:', e);
+        showNotification('Notlar dışa aktarılırken bir hata oluştu!', 'error');
+    }
 }
 
 // Notları içe aktarma fonksiyonu
-function importNotes() {
+async function importNotes() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     
-    input.onchange = e => {
+    input.onchange = async e => {
         const file = e.target.files[0];
         const reader = new FileReader();
         
-        reader.onload = function(event) {
+        reader.onload = async function(event) {
             try {
                 const importedNotes = JSON.parse(event.target.result);
                 
@@ -414,16 +463,40 @@ function importNotes() {
                     throw new Error('Geçersiz not formatı');
                 }
 
-                showConfirmModal('Mevcut notlara eklenecek. Onaylıyor musunuz?', () => {
+                showConfirmModal(`${importedNotes.length} not içe aktarılacak. Onaylıyor musunuz?`, async () => {
                     try {
-                        const currentNotes = JSON.parse(localStorage.getItem('encryptedNotes') || '[]');
-                        const newNotes = currentNotes.concat(
-                            importedNotes.map(note => encrypt(JSON.stringify(note)))
-                        );
+                        // Batch işlemi başlat
+                        const batch = db.batch();
+                        let successCount = 0;
                         
-                        localStorage.setItem('encryptedNotes', JSON.stringify(newNotes));
+                        // Her notu Firebase'e ekle
+                        for (const note of importedNotes) {
+                            const safeTitle = encodeURIComponent(note.title);
+                            const safeText = encodeURIComponent(note.text);
+                            
+                            const noteRef = db.collection('notes').doc();
+                            batch.set(noteRef, {
+                                title: note.title,
+                                text: note.text,
+                                link: note.link || '',
+                                category: note.category || 'genel',
+                                date: note.date || new Date().toISOString(),
+                                encrypted: encrypt(JSON.stringify({
+                                    title: safeTitle,
+                                    text: safeText,
+                                    link: note.link || ''
+                                })),
+                                userId: firebase.auth().currentUser.uid
+                            });
+                            successCount++;
+                        }
+                        
+                        // Batch işlemini uygula
+                        await batch.commit();
+                        
                         loadNotes();
-                        showNotification(`${importedNotes.length} not başarıyla içe aktarıldı!`, 'success');
+                        updateAdminStats();
+                        showNotification(`${successCount} not başarıyla içe aktarıldı!`, 'success');
                     } catch(e) {
                         console.error('İçe aktarma hatası:', e);
                         showNotification('Notlar içe aktarılırken bir hata oluştu!', 'error');
@@ -442,7 +515,7 @@ function importNotes() {
 }
 
 // Çıkış fonksiyonu
-async function logout() {
+function logout() {
     showConfirmModal('Çıkış yapmak istediğinizden emin misiniz?', async () => {
         try {
             await firebase.auth().signOut();
@@ -451,9 +524,6 @@ async function logout() {
             
             // Formu temizle
             document.getElementById('password').value = '';
-            document.getElementById('noteInput').value = '';
-            document.getElementById('noteTitle').value = '';
-            document.getElementById('noteLink').value = '';
             
             // Ekranları değiştir
             document.getElementById('notesSection').style.display = 'none';
@@ -502,4 +572,283 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Filtreleme
     document.getElementById('filterCategory').addEventListener('change', loadNotes);
-}); 
+});
+
+// Not ekleme modalını aç
+function showAddNoteModal() {
+    document.getElementById('addNoteModal').style.display = 'block';
+    document.getElementById('modalNoteTitle').focus();
+}
+
+// Not ekleme modalını kapat
+function closeAddNoteModal() {
+    const modal = document.getElementById('addNoteModal');
+    modal.style.display = 'none';
+    
+    // Form alanlarını temizle
+    document.getElementById('modalNoteTitle').value = '';
+    document.getElementById('modalNoteLink').value = '';
+    document.getElementById('modalNoteInput').value = '';
+    document.getElementById('modalNoteCategory').value = 'genel';
+    
+    // Modal başlığını sıfırla
+    modal.querySelector('.modal-header h3').textContent = 'Yeni Not Ekle';
+    
+    // Kaydet butonunu sıfırla
+    const saveButton = modal.querySelector('.primary-btn');
+    saveButton.onclick = saveNoteFromModal;
+}
+
+// Modaldan not kaydetme
+async function saveNoteFromModal() {
+    try {
+        // Auth kontrolü
+        const user = firebase.auth().currentUser;
+        if (!user) {
+            showNotification('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın!', 'error');
+            return;
+        }
+
+        const noteTitle = document.getElementById('modalNoteTitle');
+        const noteInput = document.getElementById('modalNoteInput');
+        const noteLink = document.getElementById('modalNoteLink');
+        const category = document.getElementById('modalNoteCategory').value;
+        
+        if(noteTitle.value.trim() === '') {
+            showNotification('Lütfen bir başlık girin!', 'error');
+            return;
+        }
+
+        if(noteInput.value.trim() === '') {
+            showNotification('Lütfen bir not girin!', 'error');
+            return;
+        }
+
+        // Türkçe karakterleri ve boşlukları güvenli hale getir
+        const safeTitle = encodeURIComponent(noteTitle.value.trim());
+        const safeText = encodeURIComponent(noteInput.value.trim());
+        const safeLink = noteLink.value.trim();
+
+        const noteData = {
+            title: noteTitle.value.trim(),
+            text: noteInput.value.trim(),
+            link: safeLink,
+            category: category,
+            date: new Date().toISOString(),
+            encrypted: encrypt(JSON.stringify({
+                title: safeTitle,
+                text: safeText,
+                link: safeLink
+            })),
+            userId: user.uid
+        };
+
+        // Firebase'e kaydet
+        await db.collection('notes').add(noteData);
+        
+        // Modalı kapat
+        closeAddNoteModal();
+        
+        loadNotes();
+        updateAdminStats();
+        showNotification('Not başarıyla kaydedildi!', 'success');
+    } catch(e) {
+        console.error('Not kaydetme hatası:', e);
+        showNotification('Not kaydedilirken bir hata oluştu!', 'error');
+    }
+}
+
+// Modal dışına tıklandığında kapatma
+window.onclick = function(event) {
+    const addNoteModal = document.getElementById('addNoteModal');
+    const confirmModal = document.getElementById('confirmModal');
+    
+    if (event.target === addNoteModal) {
+        closeAddNoteModal();
+    }
+    if (event.target === confirmModal) {
+        confirmDelete(false);
+    }
+}
+
+// Kategori filtreleme fonksiyonu
+async function filterNotes() {
+    const notesList = document.getElementById('notesList');
+    const filterCategory = document.getElementById('filterCategory').value;
+    notesList.innerHTML = '';
+    
+    try {
+        // Auth kontrolü
+        const user = firebase.auth().currentUser;
+        if (!user) {
+            console.log('Kullanıcı oturumu bulunamadı');
+            return;
+        }
+
+        // Notları sorgula
+        const snapshot = await db.collection('notes')
+            .orderBy('date', 'desc')
+            .get();
+
+        if (snapshot.empty) {
+            notesList.innerHTML = '<div class="no-notes">Henüz not eklenmemiş</div>';
+            return;
+        }
+
+        let hasVisibleNotes = false;
+
+        snapshot.forEach(doc => {
+            try {
+                const note = doc.data();
+                
+                // Kategori filtreleme
+                if (filterCategory !== 'hepsi' && note.category !== filterCategory) {
+                    return;
+                }
+
+                hasVisibleNotes = true;
+                const decryptedData = JSON.parse(decrypt(note.encrypted));
+                
+                // Türkçe karakterleri geri çevir
+                const title = decodeURIComponent(decryptedData.title || '');
+                const text = decodeURIComponent(decryptedData.text || '');
+                
+                const noteDiv = document.createElement('div');
+                noteDiv.className = `note ${note.category}`;
+                
+                noteDiv.innerHTML = `
+                    <div class="note-header">
+                        <div class="note-header-left">
+                            <h4 class="note-title">${title}</h4>
+                            <span class="note-category ${note.category}">${getCategoryName(note.category)}</span>
+                        </div>
+                        <div class="note-date">${formatDate(note.date)}</div>
+                    </div>
+                    <div class="note-content">${text}</div>
+                    ${decryptedData.link ? `
+                        <div class="note-link">
+                            <a href="${decryptedData.link}" target="_blank" rel="noopener noreferrer">
+                                <span>🔗</span>
+                                <span>Bağlantıya Git</span>
+                            </a>
+                        </div>
+                    ` : ''}
+                    <div class="note-actions">
+                        <button class="edit-btn" onclick="editNote('${doc.id}')">
+                            <span>✏️</span>
+                            <span>Düzenle</span>
+                        </button>
+                        <button class="delete-btn" onclick="deleteNote('${doc.id}')">
+                            <span>🗑️</span>
+                        </button>
+                    </div>
+                `;
+
+                notesList.appendChild(noteDiv);
+            } catch(e) {
+                console.error('Not işleme hatası:', e);
+            }
+        });
+
+        // Filtrelenmiş sonuçlarda not yoksa mesaj göster
+        if (!hasVisibleNotes) {
+            if (filterCategory !== 'hepsi') {
+                notesList.innerHTML = '<div class="no-notes">Bu kategoride not bulunamadı</div>';
+            } else {
+                notesList.innerHTML = '<div class="no-notes">Henüz not eklenmemiş</div>';
+            }
+        }
+        
+        updateAdminStats();
+    } catch(e) {
+        console.error('Notları filtreleme hatası:', e);
+        showNotification('Notlar filtrelenirken bir hata oluştu!', 'error');
+    }
+}
+
+// Not düzenleme fonksiyonu
+async function editNote(noteId) {
+    try {
+        const doc = await db.collection('notes').doc(noteId).get();
+        if (!doc.exists) {
+            showNotification('Not bulunamadı!', 'error');
+            return;
+        }
+
+        const note = doc.data();
+        const decryptedData = JSON.parse(decrypt(note.encrypted));
+        
+        // Modal içeriğini doldur
+        document.getElementById('modalNoteTitle').value = decodeURIComponent(decryptedData.title || '');
+        document.getElementById('modalNoteInput').value = decodeURIComponent(decryptedData.text || '');
+        document.getElementById('modalNoteLink').value = decryptedData.link || '';
+        document.getElementById('modalNoteCategory').value = note.category;
+        
+        // Modalı göster
+        const modal = document.getElementById('addNoteModal');
+        modal.style.display = 'block';
+        
+        // Kaydet butonunu güncelle
+        const saveButton = modal.querySelector('.primary-btn');
+        saveButton.onclick = () => updateNote(noteId);
+        
+        // Modal başlığını güncelle
+        modal.querySelector('.modal-header h3').textContent = 'Notu Düzenle';
+        
+    } catch(e) {
+        console.error('Not düzenleme hatası:', e);
+        showNotification('Not düzenlenirken bir hata oluştu!', 'error');
+    }
+}
+
+// Not güncelleme fonksiyonu
+async function updateNote(noteId) {
+    try {
+        const noteTitle = document.getElementById('modalNoteTitle');
+        const noteInput = document.getElementById('modalNoteInput');
+        const noteLink = document.getElementById('modalNoteLink');
+        const category = document.getElementById('modalNoteCategory').value;
+        
+        if(noteTitle.value.trim() === '') {
+            showNotification('Lütfen bir başlık girin!', 'error');
+            return;
+        }
+
+        if(noteInput.value.trim() === '') {
+            showNotification('Lütfen bir not girin!', 'error');
+            return;
+        }
+
+        // Türkçe karakterleri ve boşlukları güvenli hale getir
+        const safeTitle = encodeURIComponent(noteTitle.value.trim());
+        const safeText = encodeURIComponent(noteInput.value.trim());
+        const safeLink = noteLink.value.trim();
+
+        const noteData = {
+            title: noteTitle.value.trim(),
+            text: noteInput.value.trim(),
+            link: safeLink,
+            category: category,
+            date: new Date().toISOString(),
+            encrypted: encrypt(JSON.stringify({
+                title: safeTitle,
+                text: safeText,
+                link: safeLink
+            }))
+        };
+
+        // Firebase'de güncelle
+        await db.collection('notes').doc(noteId).update(noteData);
+        
+        // Modalı kapat
+        closeAddNoteModal();
+        
+        // Notları yeniden yükle
+        loadNotes();
+        updateAdminStats();
+        showNotification('Not başarıyla güncellendi!', 'success');
+    } catch(e) {
+        console.error('Not güncelleme hatası:', e);
+        showNotification('Not güncellenirken bir hata oluştu!', 'error');
+    }
+} 
