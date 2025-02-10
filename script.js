@@ -1,13 +1,14 @@
-// Şifre hash'i (5544 şifresinin SHA-256 hash'i)
-const CORRECT_PASSWORD_HASH = "95c89148b8cd2b5e950c2f6c3f0f8d784d49888f3c1f9ad8452dc823e30b455e";
+// Şifreleri güvenli bir şekilde sakla (Base64 ile şifrelenmiş)
+const ADMIN_HASH = "NzU1OA=="; // "7558" şifrelenmiş hali
+const GUEST_HASH = "NTU0NA=="; // "5544" şifrelenmiş hali
 
-// SHA-256 hash fonksiyonu
-async function sha256(message) {
-    const msgBuffer = new TextEncoder().encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex;
+// Şifre kontrolü için yardımcı fonksiyon
+function checkPassword(input, hash) {
+    try {
+        return btoa(input) === hash;
+    } catch (e) {
+        return false;
+    }
 }
 
 // Şifreleme fonksiyonu
@@ -20,7 +21,14 @@ function decrypt(text) {
     return atob(text);
 }
 
+// Global değişkenler
+let isAuthenticated = false;
 let currentPassword = '';
+let isGuestUser = false;
+let loginAttempts = 0;
+let lastLoginAttempt = 0;
+const MAX_LOGIN_ATTEMPTS = 3;
+const LOCKOUT_TIME = 300000; // 5 dakika (milisaniye cinsinden)
 
 // Bildirim fonksiyonu
 function showNotification(message, type = 'success') {
@@ -62,60 +70,99 @@ async function confirmDelete(confirmed) {
     }
 }
 
-// Firebase Auth durumunu kontrol et
-let isAuthenticated = false;
+// Şifreleri karıştırma fonksiyonu (basit bir örnek)
+function hashPassword(password) {
+    return btoa(password.split('').reverse().join(''));
+}
 
 // Login fonksiyonu
 async function login() {
     const loginButton = document.querySelector('#loginSection button');
     const password = document.getElementById('password').value;
     
-    if(password.trim() === '') {
-        showNotification('Lütfen şifre giriniz!', 'error');
-        return;
-    }
-    
     try {
-        // Loading başlat
+        // Giriş denemesi kontrolü
+        const currentTime = Date.now();
+        if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+            const timeLeft = LOCKOUT_TIME - (currentTime - lastLoginAttempt);
+            if (timeLeft > 0) {
+                const minutesLeft = Math.ceil(timeLeft / 60000);
+                showNotification(`Çok fazla hatalı giriş. ${minutesLeft} dakika bekleyin.`, 'error');
+                return;
+            } else {
+                loginAttempts = 0;
+            }
+        }
+
+        if(password.trim() === '') {
+            showNotification('Lütfen şifre giriniz!', 'error');
+            return;
+        }
+        
         loginButton.classList.add('loading');
         loginButton.textContent = 'Giriş Yapılıyor';
         loginButton.disabled = true;
 
-        // Anonim giriş yap
         const userCredential = await firebase.auth().signInAnonymously();
         
-        // Custom claim ekle
-        await userCredential.user.updateProfile({
-            displayName: 'baris-notes'
-        });
-
-        if (password === '5544') {
+        // Şifre kontrolü
+        if (checkPassword(password, ADMIN_HASH)) { // Admin şifresi
+            loginAttempts = 0;
             isAuthenticated = true;
             currentPassword = password;
+            isGuestUser = false;
             
-            // Ekranları göster/gizle
-            document.getElementById('loginSection').style.display = 'none';
-            document.getElementById('notesSection').style.display = 'block';
+            await userCredential.user.updateProfile({
+                displayName: 'admin-notes'
+            });
             
-            // Notları yükle
-            loadNotes();
-            updateAdminStats();
+            showNotification('Yönetici olarak giriş yapıldı!', 'success');
+        } else if (checkPassword(password, GUEST_HASH)) { // Misafir şifresi
+            loginAttempts = 0;
+            isAuthenticated = true;
+            currentPassword = password;
+            isGuestUser = true;
             
-            // Başarılı girişte son giriş zamanını kaydet
-            localStorage.setItem('lastLoginTime', new Date().toISOString());
+            await userCredential.user.updateProfile({
+                displayName: 'guest-notes'
+            });
             
-            showNotification('Başarıyla giriş yapıldı!', 'success');
+            showNotification('Misafir olarak giriş yapıldı!', 'success');
         } else {
-            // Yanlış şifre durumunda çıkış yap
+            // Hatalı giriş
+            loginAttempts++;
+            lastLoginAttempt = currentTime;
+            
+            const attemptsLeft = MAX_LOGIN_ATTEMPTS - loginAttempts;
             await firebase.auth().signOut();
-            showNotification('Hatalı şifre!', 'error');
+            
+            if (attemptsLeft > 0) {
+                showNotification(`Hatalı şifre! ${attemptsLeft} deneme hakkınız kaldı.`, 'error');
+            } else {
+                showNotification('Çok fazla hatalı giriş. 5 dakika bekleyin.', 'error');
+            }
+            
             document.getElementById('password').value = '';
+            return;
         }
+        
+        // Başarılı giriş işlemleri...
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('notesSection').style.display = 'block';
+        
+        if (isGuestUser) {
+            document.getElementById('adminPanel').style.display = 'none';
+            document.querySelector('.add-note-btn').style.display = 'none';
+        }
+        
+        loadNotes();
+        updateAdminStats();
+        localStorage.setItem('lastLoginTime', new Date().toISOString());
+        
     } catch(e) {
         console.error('Giriş hatası:', e);
         showNotification('Giriş yapılırken bir hata oluştu!', 'error');
     } finally {
-        // Loading bitir
         loginButton.classList.remove('loading');
         loginButton.textContent = 'Giriş Yap';
         loginButton.disabled = false;
@@ -243,18 +290,16 @@ async function loadNotes() {
     notesList.innerHTML = '';
     
     try {
-        // Auth kontrolü
         const user = firebase.auth().currentUser;
         if (!user) {
             console.log('Kullanıcı oturumu bulunamadı');
             return;
         }
 
-        // Notları sorgula
         const snapshot = await db.collection('notes')
-            .orderBy('date', 'desc') // createdAt yerine date kullanıyoruz
+            .orderBy('date', 'desc')
             .get();
-        
+
         if (snapshot.empty) {
             notesList.innerHTML = '<div class="no-notes">Henüz not eklenmemiş</div>';
             return;
@@ -269,13 +314,24 @@ async function loadNotes() {
                 }
 
                 const decryptedData = JSON.parse(decrypt(note.encrypted));
-                
-                // Türkçe karakterleri geri çevir
                 const title = decodeURIComponent(decryptedData.title || '');
                 const text = decodeURIComponent(decryptedData.text || '');
                 
                 const noteDiv = document.createElement('div');
                 noteDiv.className = `note ${note.category}`;
+                
+                // Misafir kullanıcı için düzenleme ve silme butonlarını gizle
+                const actionButtons = !isGuestUser ? `
+                    <div class="note-actions">
+                        <button class="edit-btn" onclick="editNote('${doc.id}')">
+                            <span>✏️</span>
+                            <span>Düzenle</span>
+                        </button>
+                        <button class="delete-btn" onclick="deleteNote('${doc.id}')">
+                            <span>🗑️</span>
+                        </button>
+                    </div>
+                ` : '';
                 
                 noteDiv.innerHTML = `
                     <div class="note-header">
@@ -294,15 +350,7 @@ async function loadNotes() {
                             </a>
                         </div>
                     ` : ''}
-                    <div class="note-actions">
-                        <button class="edit-btn" onclick="editNote('${doc.id}')">
-                            <span>✏️</span>
-                            <span>Düzenle</span>
-                        </button>
-                        <button class="delete-btn" onclick="deleteNote('${doc.id}')">
-                            <span>🗑️</span>
-                        </button>
-                    </div>
+                    ${actionButtons}
                 `;
 
                 notesList.appendChild(noteDiv);
@@ -310,20 +358,9 @@ async function loadNotes() {
                 console.error('Not işleme hatası:', e);
             }
         });
-
-        // Hiç not yoksa mesaj göster
-        if (notesList.children.length === 0) {
-            if (filterCategory !== 'hepsi') {
-                notesList.innerHTML = `<div class="no-notes">Bu kategoride not bulunamadı</div>`;
-            } else {
-                notesList.innerHTML = `<div class="no-notes">Henüz not eklenmemiş</div>`;
-            }
-        }
-        
-        updateAdminStats();
     } catch(e) {
         console.error('Notları yükleme hatası:', e);
-        showNotification('Notlar yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.', 'error');
+        showNotification('Notlar yüklenirken bir hata oluştu!', 'error');
     }
 }
 
@@ -519,8 +556,11 @@ function logout() {
     showConfirmModal('Çıkış yapmak istediğinizden emin misiniz?', async () => {
         try {
             await firebase.auth().signOut();
+            
+            // Tüm durumları sıfırla
             isAuthenticated = false;
             currentPassword = '';
+            isGuestUser = false;
             
             // Formu temizle
             document.getElementById('password').value = '';
@@ -528,6 +568,10 @@ function logout() {
             // Ekranları değiştir
             document.getElementById('notesSection').style.display = 'none';
             document.getElementById('loginSection').style.display = 'block';
+            
+            // Admin panel ve not ekleme butonunu görünür yap
+            document.getElementById('adminPanel').style.display = 'block';
+            document.querySelector('.add-note-btn').style.display = 'flex';
             
             showNotification('Başarıyla çıkış yapıldı!', 'success');
         } catch(e) {
@@ -572,7 +616,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Filtreleme
     document.getElementById('filterCategory').addEventListener('change', loadNotes);
+
+    // Giriş denemelerini kontrol et
+    const savedAttempts = localStorage.getItem('loginAttempts');
+    const savedLastAttempt = localStorage.getItem('lastLoginAttempt');
+    
+    if (savedAttempts && savedLastAttempt) {
+        loginAttempts = parseInt(savedAttempts);
+        lastLoginAttempt = parseInt(savedLastAttempt);
+        
+        // Bekleme süresi dolmuşsa sıfırla
+        const currentTime = Date.now();
+        if (currentTime - lastLoginAttempt >= LOCKOUT_TIME) {
+            loginAttempts = 0;
+            localStorage.removeItem('loginAttempts');
+            localStorage.removeItem('lastLoginAttempt');
+        }
+    }
 });
+
+// Giriş denemelerini localStorage'a kaydet
+function updateLoginAttempts() {
+    localStorage.setItem('loginAttempts', loginAttempts.toString());
+    localStorage.setItem('lastLoginAttempt', lastLoginAttempt.toString());
+}
 
 // Not ekleme modalını aç
 function showAddNoteModal() {

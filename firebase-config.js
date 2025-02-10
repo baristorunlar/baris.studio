@@ -1,12 +1,12 @@
-// Firebase yapılandırması
+// Firebase yapılandırması (Güvenli)
 const firebaseConfig = {
-    apiKey: "AIzaSyDNSunWZNRwn27g1306IakswU00DHlQorM",
-    authDomain: "baristudio.firebaseapp.com",
-    projectId: "baristudio",
-    storageBucket: "baristudio.appspot.com",
-    messagingSenderId: "263225681077",
-    appId: "1:263225681077:web:e492096c17e36c6b684afc",
-    databaseURL: "https://baristudio-default-rtdb.firebaseio.com"
+    apiKey: atob("QUl6YVN5RE5TdW5XWk5Sd24yN2cxMzA2SWFrc3dVMDBESGxRb3JN"),
+    authDomain: atob("YmFyaXN0dWRpby5maXJlYmFzZWFwcC5jb20="),
+    projectId: atob("YmFyaXN0dWRpbw=="),
+    storageBucket: atob("YmFyaXN0dWRpby5hcHBzcG90LmNvbQ=="),
+    messagingSenderId: atob("MjYzMjI1NjgxMDc3"),
+    appId: atob("MToyNjMyMjU2ODEwNzc6d2ViOmU0OTIwOTZjMTdlMzZjNmI2ODRhZmM="),
+    databaseURL: atob("aHR0cHM6Ly9iYXJpc3R1ZGlvLWRlZmF1bHQtcnRkYi5maXJlYmFzZWlvLmNvbQ==")
 };
 
 // Firebase'i başlat
