@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kod Kopyala Butonu</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #121212;
+    color: #eee;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+
+  .code-container {
+    background: #1e1e1e;
+    padding: 20px 25px;
+    border-radius: 8px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.6);
+    max-width: 450px;
+    width: 100%;
+  }
+
+  pre {
+    background: #2d2d2d;
+    color: #c5c8c6;
+    font-size: 1.1rem;
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin: 0 0 15px 0;
+    overflow-x: auto;
+    user-select: all; /* Kullanıcının kolay seçebilmesi için */
+  }
+
+  button.copy-btn {
+    background-color: #0a84ff;
+    border: none;
+    color: white;
+    padding: 10px 22px;
+    font-size: 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.25s ease;
+    box-shadow: 0 4px 8px rgba(10,132,255,0.4);
+    width: 100%;
+  }
+
+  button.copy-btn:hover {
+    background-color: #0066d6;
+  }
+
+  button.copy-btn:active {
+    background-color: #004a9f;
+  }
+
+  .copied-message {
+    color: #0f0;
+    font-weight: bold;
+    margin-top: 8px;
+    text-align: center;
+    font-size: 0.95rem;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .copied-message.visible {
+    visibility: visible;
+    opacity: 1;
+  }
+</style>
+</head>
+<body>
+
+<div class="code-container">
+  <pre id="code-text">irm https://baris.studio/get.ps1 | iex</pre>
+  <button class="copy-btn" id="copy-btn">Kopyala</button>
+  <div class="copied-message" id="copied-msg">Kopyalandı!</div>
+</div>
+
+<script>
+  const copyBtn = document.getElementById('copy-btn');
+  const codeText = document.getElementById('code-text').innerText;
+  const copiedMsg = document.getElementById('copied-msg');
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(codeText).then(() => {
+      copiedMsg.classList.add('visible');
+      setTimeout(() => {
+        copiedMsg.classList.remove('visible');
+      }, 1500);
+    }).catch(err => {
+      alert('Kopyalama işlemi başarısız oldu. Lütfen manuel kopyalayın.');
+    });
+  });
+</script>
+
+</body>
+</html>
